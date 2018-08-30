@@ -54,7 +54,7 @@ class DataSet(object):
 
     def drop_columns(self, cols):
         """
-        Drop columns from both training_data and testing_data 
+        Drop columns from both training_data and testing_data
         """
         self.training_data.drop(cols, axis=1)
         self.testing_data.drop(cols, axis=1)
