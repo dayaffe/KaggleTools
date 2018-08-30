@@ -4,7 +4,7 @@ import sys
 import pandas as pd
 import numpy as np
 import csv as csv
-import featuretools as ft
+# import featuretools as ft
 
 from pprint import pprint
 from datacleaner import autoclean
@@ -12,6 +12,8 @@ from sklearn.model_selection import cross_val_score
 from sklearn.linear_model import LogisticRegression
 from sklearn.svm import SVC, LinearSVC
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.naive_bayes import GaussianNB
+# from xgboost import XGBClassifier
 
 from sklearn.utils import shuffle
 
@@ -54,7 +56,7 @@ class DataSet(object):
 
     def drop_columns(self, cols):
         """
-        Drop columns from both training_data and testing_data 
+        Drop columns from both training_data and testing_data
         """
         self.training_data.drop(cols, axis=1)
         self.testing_data.drop(cols, axis=1)
@@ -119,12 +121,12 @@ class DataSet(object):
 
         return clean_training, clean_testing
 
-    def perform_feature_engineering(self):
-        es = ft.EntitySet(id='Titanic')
-        es.entity_from_dataframe(entity_id='training', dataframe=self.training_data, index='PassengerId')
-        print(es)
-        feature_matrix, feature_names = ft.dfs(entityset=es, target_entity = 'training', max_depth = 2, verbose = 1, n_jobs = 3)
-        print(feature_names)
+    # def perform_feature_engineering(self):
+    #     es = ft.EntitySet(id='Titanic')
+    #     es.entity_from_dataframe(entity_id='training', dataframe=self.training_data, index='PassengerId')
+    #     print(es)
+    #     feature_matrix, feature_names = ft.dfs(entityset=es, target_entity = 'training', max_depth = 2, verbose = 1, n_jobs = 3)
+    #     print(feature_names)
 
     def get_training_data(self):
         """
@@ -142,12 +144,19 @@ class Model(object):
         self.X_train = X_train
         self.Y_train = Y_train
         self.X_test = X_test
+        self.Y_pred = None
+        self.estimator = None
+        self.model_name = None
+        self.training_score = None
+        self.validation_score = None
+        self.model_info = None
 
     def fit(self):
         return self.estimator.fit(self.X_train, self.Y_train)
 
     def predict(self):
-        return self.estimator.predict(self.X_test)
+        self.Y_pred = self.estimator.predict(self.X_test)
+        return self.Y_pred
 
     def score(self):
         return self.estimator.score(self.X_train, self.Y_train)
@@ -158,10 +167,41 @@ class Model(object):
     def run_model(self):
         self.fit()
         self.predict()
-        result_train = self.score()
-        result_val = self.cross_validation_score()
-        print('training score = %s , while validation score = %s' %(result_train , result_val))
-        return result_train, result_val
+        self.training_score = self.score()
+        self.validation_score = self.cross_validation_score()
+        print('training score = %s , while validation score = %s' %(self.training_score , self.validation_score))
+        return self.training_score, self.validation_score
+
+    def get_model(self):
+        """
+        Return everything a user would want about the model
+        """
+        self.model_info = {
+            'model': self.model_name,
+            'estimator': self.estimator,
+            'X_train': self.X_train,
+            'Y_train': self.Y_train,
+            'X_test': self.X_test,
+            'Y_pred': self.Y_pred,
+            'training_score': self.training_score,
+            'validation_score': self.validation_score
+        }
+        return self.model_info
+
+    def print_model(self):
+        """
+        Print the model info for the leaderboard
+        """
+        print('Model: {}, Training Score: {}, Validation Score: {}'.format(self.model_name, self.training_score, self.validation_score))
+
+    @staticmethod
+    def submit(estimator, id_col, predict_col, filename, index=False):
+        submission = pd.DataFrame({
+                id_col: X_test[id_col],
+                predict_col: estimator.Y_pred
+            })
+        submission.to_csv(filename, index=index)
+        print('Exported')
 
 
 class LogisticRegressionModel(Model):
@@ -169,13 +209,41 @@ class LogisticRegressionModel(Model):
     def __init__(self, X_train, Y_train, X_test):
         super(LogisticRegressionModel, self).__init__(X_train, Y_train, X_test)
         self.estimator = LogisticRegression()
+        self.model_name = 'Logistic Regression'
 
 
 class SVMModel(Model):
 
-    def __init__(self, X_train, Y_train, X_test, C=0.1, gamma=0.1):
+    def __init__(self, X_train, Y_train, X_test, C=30, gamma=0.01):
         super(SVMModel, self).__init__(X_train, Y_train, X_test)
         self.estimator = SVC(C=C, gamma=gamma)
+        self.model_name = 'SVM'
+
+
+class NaiveBayesModel(Model):
+
+    def __init__(self, X_train, Y_train, X_test):
+        super(NaiveBayesModel, self).__init__(X_train, Y_train, X_test)
+        self.estimator = GaussianNB()
+        self.model_name = 'Naive Bayes (GaussianNB)'
+
+
+# class XGBoostModel(Model):
+
+#     def __init__(self, X_train, Y_train, X_test, base_score=0.5, booster='gbtree', colsample_bylevel=1,
+#        colsample_bytree=1, gamma=0, learning_rate=0.1, max_delta_step=0,
+#        max_depth=3, min_child_weight=1, missing=None, n_estimators=100,
+#        n_jobs=1, nthread=None, objective='binary:logistic', random_state=0,
+#        reg_alpha=0, reg_lambda=1, scale_pos_weight=1, seed=None,
+#        silent=True, subsample=1):
+#        super(XGBoostModel, self).__init__(X_train, Y_train, X_test)
+#        self.estimator = XGBClassifier(base_score=0.5, booster='gbtree', colsample_bylevel=1,
+#        colsample_bytree=1, gamma=0, learning_rate=0.1, max_delta_step=0,
+#        max_depth=3, min_child_weight=1, missing=None, n_estimators=100,
+#        n_jobs=1, nthread=None, objective='binary:logistic', random_state=0,
+#        reg_alpha=0, reg_lambda=1, scale_pos_weight=1, seed=None,
+#        silent=True, subsample=1)
+#        self.model_name = 'XGBoost Classifier'
 
 
 class RandomForestModel(Model):
@@ -183,6 +251,70 @@ class RandomForestModel(Model):
     def __init__(self, X_train, Y_train, X_test, n_estimators=1000, criterion='gini', min_samples_split=10, min_samples_leaf=1, max_features='auto', oob_score=True, random_state=1, n_jobs=1):
         super(RandomForestModel, self).__init__(X_train, Y_train, X_test)
         self.estimator = RandomForestClassifier(n_estimators=n_estimators, criterion=criterion, min_samples_split=min_samples_split, min_samples_leaf=min_samples_leaf, max_features=max_features, oob_score=oob_score, random_state=random_state, n_jobs=n_jobs)
+        self.model_name = 'Random Forest ({} estimators)'.format(n_estimators)
+
+class BlenderModel(Model):
+
+    def __init__(self, models):
+        for model in models:
+            if not isinstance(model, Model):
+                raise Exception
+            if len(models) % 2 == 0:
+                raise Exception
+        self.models = models
+        self.model_count = len(models)
+        self.estimator = self.models[0] # we just need an estimator/X_train to use sklearn's score()
+        self.X_train = self.estimator.X_train
+        self.Y_pred = []
+        self.Y_train = []
+        self.model_name = 'Blender of {}'.format([model.model_name for model in self.models])
+
+    def blend(self):
+        """
+        Blend using majority rules
+        """
+        votes = []
+        training_predictions = []
+        testing_predictions = []
+
+        train_row_count = len(self.models[0].Y_train)
+        pred_row_count = len(self.models[0].Y_pred)
+
+        for row in range(train_row_count):
+            votes = [model.Y_train[row] for model in self.models]
+            self.Y_train.append(max(set(votes), key=votes.count))
+
+        for row in range(pred_row_count):
+            votes = [model.Y_pred[row] for model in self.models]
+            self.Y_pred.append(max(set(votes), key=votes.count))
+
+        self.Y_train = np.array(self.Y_train, dtype=np.int)
+        self.Y_pred = np.array(self.Y_pred, dtype=np.int)
+
+    def run_model(self):
+        self.blend()
+        self.training_score = self.score()
+        self.validation_score = None
+        print('training score = %s , while validation score = %s' %(self.training_score , self.validation_score))
+        return self.training_score, self.validation_score
+
+    def score(self):
+        return self.estimator.score()
+
+    def get_model(self):
+        """
+        Return everything a user would want about the model
+        """
+        self.model_info = {
+            'model': self.model_name,
+            'model_count': self.model_count,
+            'Y_train': self.Y_train,
+            'Y_pred': self.Y_pred,
+            'training_score': self.training_score,
+            'validation_score': self.validation_score
+        }
+        return self.model_info
+
 
 class Autopilot(object):
 
@@ -208,7 +340,7 @@ class Autopilot(object):
 
     def run_autopilot(self, skip_preparation=False):
         print("****************************************************")
-        print("Autopilot Started")
+        print("Autopilot Starting...")
 
         if not skip_preparation:
             self.prepare_data()
@@ -217,44 +349,51 @@ class Autopilot(object):
         print("Running Logistic Regression")
         logreg = LogisticRegressionModel(self.X_train, self.Y_train, self.X_test)
         training_score, validation_score = logreg.run_model()
-        self.results.append({
-            'model': 'Logistic Regression',
-            'training score': training_score,
-            'validation score': validation_score,
-        })
+        print(logreg.Y_pred)
+        self.results.append(logreg)
 
         # SVM
         print("Running SVM")
         svm = SVMModel(self.X_train, self.Y_train, self.X_test)
         training_score, validation_score = svm.run_model()
-        self.results.append({
-            'model': 'SVM',
-            'training score': training_score,
-            'validation score': validation_score
-        })
+        print(svm.Y_pred)
+        self.results.append(svm)
 
         # Random Forests
         print("Running Random Forests")
         n_estimators=100
         random_forest = RandomForestModel(self.X_train, self.Y_train, self.X_test, n_estimators=n_estimators)
         training_score, validation_score = random_forest.run_model()
-        self.results.append({
-            'model': 'Random Forests ({} Estimators)'.format(n_estimators),
-            'training score': training_score,
-            'validation score': validation_score
-        })
+        print(random_forest.Y_pred)
+        self.results.append(random_forest)
 
-        list.sort(self.results, key=lambda x: x['validation score'], reverse=True)
+        # Naive Bayes
+        print("Running Naive Bayes (GaussianNB)")
+        naive_bayes = NaiveBayesModel(self.X_train, self.Y_train, self.X_test)
+        training_score, validation_score = naive_bayes.run_model()
+        print(naive_bayes.Y_pred)
+        self.results.append(naive_bayes)
+
+        # Blender
+        print("Running Blender")
+        blender_model = BlenderModel([logreg, random_forest, naive_bayes])
+        blender_model.run_model()
+        print(blender_model.Y_pred)
+        self.results.append(blender_model)
+
+        list.sort(self.results, key=lambda x: x.get_model()['validation_score'], reverse=True)
         self.best_model = self.results[0]
 
         print("Autopilot Finished")
         print("******LEADERBOARD******")
-        pprint(self.results)
+        for result in self.results:
+            result.print_model()
         print("******BEST MODEL******")
-        pprint(self.best_model)
+        self.best_model.print_model()
         print("****************************************************")
 
         return self.results, self.best_model
+
 
 ###################################################################################################
 
@@ -266,6 +405,7 @@ X_train, Y_train = titanic.get_training_data()
 X_test = titanic.testing_data
 titanic_autopilot.set_data(X_train, Y_train, X_test)
 results, best_model = titanic_autopilot.run_autopilot()
+Model.submit(results[4], "PassengerId", "Survived", "titanic.csv")
 
 
 # titanic.clean_data(replace_data=True)
@@ -277,10 +417,3 @@ results, best_model = titanic_autopilot.run_autopilot()
 # Y_pred = random_forest.predict()
 
 ###################################################################################################
-
-# submission = pd.DataFrame({
-#         "PassengerId": X_test["PassengerId"],
-#         "Survived": Y_pred
-#     })
-# submission.to_csv('titanic.csv', index=False)
-# print('Exported')
